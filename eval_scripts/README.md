@@ -59,3 +59,43 @@ python -m eval_scripts.run_all_tables \
 4. Add a smoke test under `tests/test_eval_scripts/`.
 5. Add the script to the orchestrator in `run_all_tables.py`.
 6. Update the table in this README.
+
+## Emitting predictions
+
+Prediction scripts (in `src/ilmcloze/infer/`, downstream tools, etc.)
+should produce JSONL using the canonical schema. Two helpers are
+provided:
+
+```python
+from eval_scripts.emit import build_record, write_records
+from pathlib import Path
+
+records = [
+    build_record(
+        model="glm-learnercond-ft",
+        item_id=item.id,
+        predicted_filler=hypothesis.text,
+        predicted_logprob=hypothesis.logprob,
+        dataset="EFCAMDAT",
+        cefr=item.cefr,                  # case-normalised internally
+        l1=item.l1,
+        native_gold_filler=item.native_gold,
+        learner_gold_filler=item.learner_gold,
+    )
+    for item, hypothesis in run(...)
+]
+write_records(Path("predictions.jsonl"), records)
+```
+
+Both `build_record` and `write_records` raise on schema-invalid output —
+fail at the producer rather than ship bad JSONL.
+
+## Validating an existing JSONL
+
+```bash
+python -m eval_scripts.schema --input predictions.jsonl
+```
+
+Prints `OK: <path>` on a clean file, or per-line issues + non-zero exit
+otherwise. Use this in CI or as a `pytest` fixture before running any
+eval table.
