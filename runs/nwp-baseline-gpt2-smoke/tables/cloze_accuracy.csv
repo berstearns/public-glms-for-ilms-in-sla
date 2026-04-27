@@ -1,0 +1,2 @@
+model,dataset,n,correct,accuracy
+nwp-baseline-gpt2,hand-crafted-smoke,5,0,0.0

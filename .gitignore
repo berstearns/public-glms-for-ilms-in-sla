@@ -28,10 +28,12 @@ venv/
 htmlcov/
 
 # Run / cache outputs
-runs/
 data-cache/
 data/
 codebase/artifacts/
+# runs/ is committed (predictions.jsonl + small CSV tables); large model
+# checkpoints / weights are excluded by the *.pt / *.bin / *.safetensors
+# rules below.
 codebase/runs/
 codebase/data-cache/
 *.ckpt

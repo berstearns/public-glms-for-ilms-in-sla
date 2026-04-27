@@ -1,0 +1,2 @@
+model,dataset,n,learner_top1,learner_top1_acc,mean_logprob_learner_gold
+nwp-baseline-gpt2,hand-crafted-smoke,5,0,0.0,nan

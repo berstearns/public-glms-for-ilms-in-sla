@@ -1,0 +1,4 @@
+model,dataset,cefr,n,learner_top1,learner_top1_acc
+nwp-baseline-gpt2,hand-crafted-smoke,A2,2,0,0.0
+nwp-baseline-gpt2,hand-crafted-smoke,B1,2,0,0.0
+nwp-baseline-gpt2,hand-crafted-smoke,B2,1,0,0.0
