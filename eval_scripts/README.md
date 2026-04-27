@@ -90,6 +90,43 @@ write_records(Path("predictions.jsonl"), records)
 Both `build_record` and `write_records` raise on schema-invalid output —
 fail at the producer rather than ship bad JSONL.
 
+## Online vs offline modes
+
+Two equivalent ways to feed an eval script:
+
+**Offline** — start from any existing `predictions.jsonl`:
+
+```bash
+python -m eval_scripts.eval_cloze_accuracy_table \
+    --input runs/<id>/predictions.jsonl \
+    --out tables/cloze_accuracy.csv
+```
+
+**Online (NWP baseline)** — predict on the fly from a model + a CSV
+of cloze items, then feed any eval script:
+
+```bash
+# requires: pip install transformers torch
+python -m eval_scripts.predict_online_nwp \
+    --model gpt2 \
+    --data data/cloze_items.csv \
+    --model_name_label nwp-baseline-gpt2 \
+    --dataset EFCAMDAT \
+    --out predictions.jsonl
+
+python -m eval_scripts.run_all_tables \
+    --input predictions.jsonl --out_dir tables/
+```
+
+CSV input shape: one row per cloze item with at least `item_id` and
+`prefix` columns. Optional columns (`native_gold_filler`,
+`learner_gold_filler`, `cefr`, `l1`) pass through to the JSONL when
+present so downstream tables can score against gold.
+
+`predict_online_nwp` is the variant-03 prompt-fill baseline. GLM (variant
+01) and BERT-MLM (variant 05) online predictors live in their own
+modules sharing the same `eval_scripts.emit.write_records` contract.
+
 ## Validating an existing JSONL
 
 ```bash
