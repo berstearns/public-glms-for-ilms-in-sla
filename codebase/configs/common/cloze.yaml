@@ -1,0 +1,10 @@
+# Shared "cloze" section. !include this under the `cloze:` key.
+gap_type: multi_token           # single_token | multi_token | function | content | l2_loci
+span_length_lambda: 3.0
+span_max_length: 8
+mask_budget: 0.15
+num_gaps_per_text: 1
+context_condition: II           # I | II | III
+synth_corruption_rate: 0.05
+l2_loci: [DET, PREP, VERB:FORM, VERB:SVA]
+exclude_sentence_initial: false

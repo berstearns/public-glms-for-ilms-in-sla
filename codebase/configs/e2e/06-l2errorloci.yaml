@@ -1,0 +1,47 @@
+# Variant 06 — L2-error-loci gaps (articles, prepositions, verb morphology,
+# agreement). Tests whether the ILM captures SLA-known difficulty.
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - errant-profile
+    - cluster-errprof
+    - build-cloze
+    - train-ilm
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+download-data:   !include ../pipeline/download-data.yaml
+prepare-splits:  !include ../pipeline/prepare-splits.yaml
+gec-clean:       !include ../pipeline/gec-clean.yaml
+errant-profile:  !include ../pipeline/errant-profile.yaml
+cluster-errprof: !include ../pipeline/cluster-errprof.yaml
+train-ilm:       !include ../pipeline/train-ilm.yaml
+infer:           !include ../pipeline/infer.yaml
+evaluate:        !include ../pipeline/evaluate.yaml
+plot-results:    !include ../pipeline/plot-results.yaml
+
+build-cloze:
+  data: !include ../common/data.yaml
+  cloze:
+    gap_type: l2_loci                           # ← key switch
+    span_length_lambda: 1.0
+    span_max_length: 3
+    mask_budget: 0.15
+    num_gaps_per_text: 1
+    context_condition: II
+    synth_corruption_rate: 0.05
+    l2_loci: [DET, PREP, VERB:FORM, VERB:SVA]
+    exclude_sentence_initial: false
+
+experiment:
+  name: "06-l2errorloci"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

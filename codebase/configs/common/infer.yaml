@@ -1,0 +1,6 @@
+# Shared "infer" section. !include under the `infer:` key.
+batch_size: 16
+top_k: [1, 5]
+sample: false
+temperature: 1.0
+num_samples: 1

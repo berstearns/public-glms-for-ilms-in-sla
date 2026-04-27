@@ -1,0 +1,5 @@
+# Template for codebase/configs/common/data.yaml.
+# Copy this into place and set splits_dir to the absolute path of your
+# cross-corpus SLA data splits (EFCAMDAT, CELVA-SP, KUPA-KEYS, andrew100k).
+
+splits_dir: /absolute/path/to/cefr-classification/data/splits

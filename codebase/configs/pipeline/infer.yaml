@@ -1,0 +1,17 @@
+# Stage 09 — run the configured backbone on the cloze JSONL.
+model:        !include ../common/model/glm-base.yaml
+conditioning: !include ../common/conditioning.yaml
+infer:        !include ../common/infer.yaml
+
+stage:
+  items_jsonl: ""             # "" = use {output_dir}/{name}/build_cloze/cloze.jsonl
+  nwp_l2r: false              # model.kind == nwp: left-to-right instead of prompt
+  mlm_length_unknown: false   # model.kind == mlm: enumerate span lengths
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

@@ -1,0 +1,11 @@
+# Stage 12 — produce the figures used in the paper.
+stage:
+  which: all           # all | ranking | calibration | heatmap | transfer
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

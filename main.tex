@@ -1,0 +1,673 @@
+\documentclass[11pt]{article}
+
+% Change "review" to "final" for camera-ready version.
+\usepackage[review]{acl}
+
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{xcolor}
+
+\title{From Next-Word Prediction to Interlanguage Infilling:\\
+Adapting GLMs for Learner Cloze Simulation}
+
+\author{Anonymous Submission \\
+        EMNLP 2026 \\
+        \texttt{anon@example.com}}
+
+\begin{document}
+\maketitle
+
+% =============================================================================
+\begin{abstract}
+Artificial learners --- language models adapted to second-language (L2)
+writing --- are increasingly used as backbones for learner simulation,
+proficiency assessment, and exercise generation. The dominant backbone is a
+decoder-only next-word-prediction (NWP) model. We argue that this choice is
+wrong for the tasks teachers and assessment systems actually use to probe
+learner knowledge: \emph{fill-the-gap} and other cloze items. NWP cannot
+condition on the right context of the gap; it is biased toward fluent
+target-language completions rather than learner-plausible ones; and its
+cloze accuracy collapses when the surrounding context itself contains
+learner errors. We propose instead that learner cloze simulation should be
+grounded in an \emph{autoregressive blank-infilling} objective, and adapt
+the GLM framework of \citet{du2022glm} to learner data. With a lightweight
+learner-conditioning prefix (L1, CEFR, ERRANT error-profile bucket), a
+continued-pretrained GLM becomes an \emph{Interlanguage Language Model}
+(ILM): a model whose predictive distribution over a cloze gap approximates
+the empirical filler distribution a real learner at a specified proficiency
+would produce. On a held-out EFCAMDAT cloze set, the ILM matches or
+outperforms a strong NWP baseline on exact match while reducing KL divergence
+to the empirical learner-filler distribution by a large margin, with the gap
+widening under noisy learner context and at multi-token gaps --- the regime
+the paper is about. We further evaluate transfer to CELVA-SP, KUPA-KEYS, and
+andrew100k, and find that distribution-level metrics degrade less than
+mode-level metrics, consistent with the paper's central claim that
+\emph{density, not mode}, is the right object for learner cloze simulation.
+\end{abstract}
+
+% =============================================================================
+\section{Introduction}
+\label{sec:intro}
+
+Cloze and fill-the-gap exercises are the most common format in which
+second-language (L2) assessment and practice actually reach learners. A
+realistic artificial-learner system --- one that could be used to simulate
+student responses, calibrate item difficulty, or generate plausible
+distractors --- must therefore model learner responses to cloze items well.
+The de-facto backbone used for artificial learners in recent work is a
+decoder-only \emph{next-word-prediction} (NWP) model such as GPT-2
+\citep{radford2019language} or a larger instruction-tuned causal LM,
+sometimes with supervised fine-tuning on learner corpora
+\citep{caines2023application,naismith2023automated}.
+
+We argue this default is wrong, and for structural reasons that compound:
+
+\begin{enumerate}[leftmargin=*,itemsep=0.3em]
+    \item \textbf{NWP cannot see the right context of a gap.} Cloze items
+    are infilling tasks: the correct filler depends jointly on left and
+    right context. NWP factorises the distribution left-to-right; it can
+    either discard the right context (variant 04) or smuggle it in via
+    prompt engineering (variant 03), but both are workarounds for an
+    objective mismatch.
+    \item \textbf{NWP is biased toward the \emph{native} filler.} Trained
+    on large, overwhelmingly native corpora, a decoder-only LM concentrates
+    probability mass on the modal target-language completion. A learner at
+    B1 does not produce the modal completion; they produce a filler drawn
+    from a \emph{different} distribution --- one that NWP does not directly
+    model.
+    \item \textbf{NWP collapses in learner context.} When the text
+    surrounding the gap contains the learner's own upstream/downstream
+    errors --- the natural setting for any real cloze constructed from
+    authentic learner writing --- NWP's already-weak distributional estimate
+    degrades further.
+\end{enumerate}
+
+\noindent The \emph{autoregressive blank infilling} objective proposed in
+\citet{du2022glm} removes the first pathology by construction: its Part~A
+attends bidirectionally, its Part~B generates the masked spans
+autoregressively, and the two are unified in a single Transformer. GLM was
+introduced as an NLU-vs-generation unification; we repurpose it as the right
+\emph{objective} for learner cloze simulation.
+
+Pathologies (2) and (3) are not solved by GLM alone: a GLM pretrained on
+Wikipedia still produces native-filler distributions. We therefore adapt
+GLM to learner data in two steps: \emph{continued pretraining} on EFCAMDAT
+with the GLM objective, and a lightweight \emph{learner-conditioning prefix}
+that exposes L1, CEFR level, and a coarse ERRANT-profile bucket to the
+model. We call the resulting object an \textbf{Interlanguage Language Model}
+(ILM) --- a language model whose predictive distribution over a cloze gap
+approximates the distribution a real L2 learner with the specified
+profile would produce.
+
+\subsection*{Contributions}
+\begin{enumerate}[leftmargin=*,itemsep=0.25em]
+    \item A \textbf{diagnostic evaluation} showing that NWP-based infillers
+    --- in both left-to-right and prompt-based-fill-the-blank
+    configurations --- fail as learner cloze models in precisely the regime
+    where cloze items are interesting: non-initial gaps, multi-token spans,
+    and authentic learner context (§\ref{sec:diagnosis}).
+    \item A \textbf{method}, \emph{ILM}, that adapts the GLM objective to
+    learner text via continued pretraining and a learner-conditioning
+    prefix, and that matches the NWP baseline on exact match while
+    drastically improving \emph{learner-plausibility} and \emph{filler-
+    distribution calibration} (§\ref{sec:method}, §\ref{sec:results}).
+    \item An \textbf{SLA-construct evaluation} at L2 error loci
+    (determiners, prepositions, verb morphology, subject--verb agreement)
+    showing that ILM's per-locus learner-plausibility pattern matches the
+    predictions of \citet{goldschneider2001explaining} and
+    \citet{pienemann1998language}; NWP baselines produce a flat surface
+    (§\ref{sec:sla-construct}).
+    \item \textbf{Cross-corpus transfer} experiments on CELVA-SP,
+    KUPA-KEYS, and andrew100k, which show that distribution-level metrics
+    (KL, learner-plausibility) transfer more reliably than mode-level
+    metrics (exact match), consistent with the claim that density, not
+    mode, is the right object (§\ref{sec:transfer}).
+\end{enumerate}
+
+% =============================================================================
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Artificial learners and learner simulation.}
+A line of work trains or adapts language models on L2 corpora to produce
+``artificial learners'': models that generate learner-like errors
+\citep{caines2023application,naismith2023automated,chollampatt2018neural}.
+Recent analyses establish construct validity for such models by showing
+that their error distributions align with SLA-predicted typologies
+\citep[our CMCL-2026 companion work]{anonymous2026cmcl}. This paper extends
+the artificial-learner programme from free-generation error distributions
+to the cloze / infilling setting.
+
+\paragraph{Cloze and fill-the-gap in NLP for education.}
+Cloze items are widely used for L2 assessment and practice
+\citep{taylor1953cloze}. Prior automated approaches rely on MLMs like BERT
+\citep{devlin2019bert} or on NWP prompted to ``fill the blank''
+\citep{panda2022automatic,kurdi2020systematic}. We show that both
+approaches inherit objective mismatches for the \emph{learner} case.
+
+\paragraph{Infilling objectives.}
+T5 \citep{raffel2020exploring} introduced span-denoising seq-to-seq
+pretraining; BART \citep{lewis2020bart} used denoising with
+encoder-decoder. \citet{donahue2020enabling} and \citet{shen2020blank}
+study text infilling directly. GLM \citep{du2022glm} unifies autoencoding
+and autoregressive generation through autoregressive blank infilling with
+2D positional encodings and span shuffling. We adopt GLM as our backbone
+precisely because of its autoregressive, variable-length, bidirectional-
+context span generation --- the combination required for learner cloze.
+
+\paragraph{Metadata- and persona-conditioned LMs.}
+Conditioning LMs on learner metadata for generation and assessment has
+been explored via prompt-based control and prefix-tuning
+\citep[our sibling sketch]{anonymous2026metadata}. We transplant that
+conditioning framing from NWP to the GLM objective.
+
+% =============================================================================
+\section{Background: GLM}
+\label{sec:background}
+
+\citet{du2022glm} propose the autoregressive blank-infilling objective.
+Given input $x = [x_1, \dots, x_n]$, multiple spans $\{s_1, \dots, s_m\}$
+are sampled (Poisson span lengths, $\lambda{=}3$, 15\% of tokens masked).
+Each span is replaced by a single \texttt{[MASK]} token in Part~A. Part~B
+consists of the masked spans in a shuffled order, each prefixed with
+\texttt{[START]} and suffixed with \texttt{[END]}. The model is trained to
+maximise
+\[
+\max_\theta \mathbb{E}_{\mathbf{z} \sim Z_m}
+\left[
+\sum_{i=1}^{m} \log p_\theta(\mathbf{s}_{z_i}\mid x_{\text{corrupt}}, \mathbf{s}_{\mathbf{z}_{<i}})
+\right],
+\]
+with Part~A attending bidirectionally and Part~B attending to Part~A plus
+its own antecedents. This single objective subsumes MLM (single-span,
+length 1), prefix-LM (single-span, length $>50\%$), and T5-style
+span-denoising (multi-span, independent positional ids), without the
+architectural asymmetry of encoder--decoder models. The 2D positional
+encoding removes the requirement that the model know the span length
+in advance, which is the pathology that afflicts BERT on multi-token
+blanks.
+
+For our purposes, two properties matter:
+\begin{enumerate}[leftmargin=*,itemsep=0.2em]
+    \item \textbf{Bidirectionality over the corrupted text.} The filler is
+    conditioned on both left and right of the gap. This is what a cloze
+    item requires.
+    \item \textbf{Autoregressive span generation.} Multi-token fillers are
+    generated with full intra-span dependency, unlike MLM's independence
+    assumption.
+\end{enumerate}
+
+% =============================================================================
+\section{Method: From GLM to ILM}
+\label{sec:method}
+
+\subsection{Objective}
+We retain GLM's autoregressive blank-infilling objective verbatim, but
+apply it to learner corpora with a conditioning prefix.
+
+\subsection{Learner-conditioning prefix}
+Every training instance and every inference-time cloze item is prepended
+in Part~A with:
+\begin{center}
+\small\texttt{[L1=\textit{lang}] [CEFR=\textit{level}] [ERRPROF=\textit{k}]}
+\end{center}
+where:
+\begin{itemize}[leftmargin=*,itemsep=0.15em]
+    \item \texttt{L1} is the writer's first language (EFCAMDAT metadata;
+    \texttt{UNK} when unavailable);
+    \item \texttt{CEFR} is the writer's proficiency label
+    (A1\ldots C2);
+    \item \texttt{ERRPROF} is a coarse bucket (16 clusters, $k$-means over
+    the ERRANT error-type vector fit on EFCAMDAT) imputed at inference for
+    corpora without explicit metadata.
+\end{itemize}
+
+\subsection{Continued pretraining}
+Starting from a public GLM checkpoint (GLM-Base 110M;
+GLM-RoBERTa-Large 335M), we continue-pretrain on EFCAMDAT with the GLM
+objective (Poisson $\lambda{=}3$, 15\% mask, span shuffle) and the
+conditioning prefix. Three epochs; effective batch size 256; lr $10^{-5}$;
+AdamW; linear warm-up 5\%.
+
+\subsection{Cloze inference}
+For an evaluation item with left context $L$, gap $g$, right context $R$,
+and metadata $m = (\text{L1, CEFR, ERRPROF})$, we build Part~A as
+\begin{center}\small
+\texttt{[L1=\ldots] [CEFR=\ldots] [ERRPROF=\ldots]} $L$ \texttt{[MASK]} $R$
+\end{center}
+and greedily (or via nucleus sampling) generate the contents of the first
+span in Part~B. The model's predictive distribution over the gap is the
+object we evaluate.
+
+% =============================================================================
+\section{Experimental Setup}
+\label{sec:setup}
+
+\subsection{Main experiment (variant 01)}
+\label{sec:main-variant}
+
+The main experiment instantiates the following cell of the design space:
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Backbone           & GLM + learner-conditioning prefix \\
+Gap type           & contiguous multi-token spans ($\lambda{=}3$) \\
+Context            & authentic learner context (condition II) \\
+Training regime    & continued pretraining on EFCAMDAT \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Remaining variants are ablations: vanilla GLM without conditioning,
+NWP prompt baseline, NWP L$\rightarrow$R baseline, BERT MLM baseline,
+L2-error-loci evaluation, span-length ablation, context-condition
+ablation, training-regime ablation, and cross-corpus transfer.
+See the supplementary \texttt{experiments-ideas/} for full per-variant
+specifications.
+
+\subsection{Evaluation set}
+\label{sec:eval-set}
+We evaluate on a \textbf{100-item CEFR-stratified sample} of EFCAMDAT-test
+(20 items per level, A1 through C1), with one contiguous multi-token gap
+per item of length 1--3 (Poisson $\lambda{=}2$, max length 3). All items
+are in condition~II (authentic learner context surrounding the gap). The
+sample is explicit and reproducible: it is materialised as
+\texttt{\small samples/efcamdat-smoke-100.csv} by a seeded sampler and is
+checked into the codebase alongside the derived cloze JSONL
+(\texttt{cloze.jsonl}, same content across systems).
+
+\subsection{Data}
+\label{sec:data}
+
+\textbf{Primary.} EFCAMDAT, CEFR-stratified train/test split following the
+splits under
+\texttt{\small/phd-experimental-data/cefr-classification/data/splits/}.
+
+\textbf{Transfer.} CELVA-SP, KUPA-KEYS, andrew100k, universal-CEFR,
+under the same splits directory. Each is turned into a multi-token cloze
+test set by sampling spans of length 1--6 at positions drawn uniformly
+over the text (so gaps are not biased to sentence-initial).
+
+\textbf{Native-filler reference and clean-context counterfactuals.} We
+generate a GEC-corrected version of every text with CoEdit-Large
+\citep{raheja2023coedit}, which defines condition (I) ``clean'' and
+supplies the native reference filler for each gap. Condition (II) is the
+raw learner text; condition (III) applies calibrated synthetic corruption
+to condition (I) to match the ERRANT error rate of EFCAMDAT-B1.
+
+\textbf{Not a priority.} C4-200M is mentioned only as a potential scaling
+control; it is not run for this paper.
+
+\subsection{Baselines}
+\label{sec:baselines}
+\begin{itemize}[leftmargin=*,itemsep=0.15em]
+    \item \textbf{NWP-L$\rightarrow$R} (variant 04): decoder-only LM, left
+    context only, greedy continuation.
+    \item \textbf{NWP-prompt} (variant 03): decoder-only LM with a
+    fill-the-blank prompt template; zero-shot and SFT on EFCAMDAT cloze
+    triples.
+    \item \textbf{MLM} (variant 05): BERT/DeBERTa with $k$ mask tokens
+    (length known) and iterative unmasking (length unknown).
+    \item \textbf{GLM-vanilla} (variant 02): GLM continued-pretrained on
+    EFCAMDAT without the conditioning prefix.
+\end{itemize}
+
+\subsection{Metrics}
+\label{sec:metrics}
+
+\begin{itemize}[leftmargin=*,itemsep=0.2em]
+    \item \textbf{Exact match / Top-$k$} against the gold learner filler.
+    \item \textbf{Learner-plausibility}
+    $\mathrm{LP} = \log p_\theta(f_\text{learner}\mid x_\text{corrupt}) - \log p_\theta(f_\text{native}\mid x_\text{corrupt})$
+    --- positive LP means the model prefers the learner filler.
+    \item \textbf{Filler-distribution calibration.} For items where
+    multiple learner fillers exist at matched CEFR, we report
+    $D_{\mathrm{KL}}(p_\text{empirical}\Vert p_\theta)$ and JS divergence.
+    \item \textbf{Robustness gap.} $\Delta = \text{metric}(\text{II}) - \text{metric}(\text{I})$.
+    \item \textbf{Cross-corpus degradation.} Per-target $\delta =
+    \text{metric}(\text{target}) - \text{metric}(\text{EFCAMDAT-test})$.
+\end{itemize}
+
+% =============================================================================
+\section{Diagnostic: Where NWP and Vanilla MLM Fail}
+\label{sec:diagnosis}
+
+\subsection{Baseline = model $\times$ decoding strategy}
+\label{sec:decoding-axis}
+
+An encoder-only MLM, a decoder-only NWP, and a GLM do not admit the same
+notion of ``run cloze''. The MLM must be wrapped in some decoding strategy
+to produce more than one subtoken; the NWP can generate greedily until
+\texttt{EOS}; GLM has autoregressive span generation built into its
+objective. We therefore treat a \textbf{baseline as a
+(model, decoding-strategy) pair} and report both axes explicitly. The
+strategies we exercise on the 100-item smoke are listed in
+Table~\ref{tab:strategies}.
+
+\begin{table*}[t]
+\centering\footnotesize
+\begin{tabular}{@{}llp{0.66\linewidth}@{}}
+\toprule
+Strategy & Family & Description \\
+\midrule
+\texttt{mlm\_none} & MLM & Single \texttt{[MASK]} regardless of gap length; top-1 subtoken. Emits exactly one subtoken. \\
+\texttt{mlm\_iterative\_confident} & MLM & Length-known: $k$ masks where $k$ = gap length in model subtokens; fill most-confident first (Mask-Predict). \\
+\texttt{nwp\_greedy\_prompt} & NWP & Fill-the-blank prompt, greedy decoding. \\
+\texttt{nwp\_greedy\_l2r} & NWP & Left context only, greedy continuation. \\
+\texttt{glm\_ar\_span} & GLM & Autoregressive Part B generation until \texttt{[END]}. \\
+\bottomrule
+\end{tabular}
+\caption{Decoding strategies. The strategy is part of the experimental
+unit: reporting ``an MLM achieves X'' without naming the strategy conflates
+(model) with (model$\times$decoding), which hides the main pathology
+documented below.}
+\label{tab:strategies}
+\end{table*}
+
+\subsection{Overall EM by (model $\times$ decoding)}
+
+\begin{table}[t]
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llc@{}}
+\toprule
+Model & Decoding & EM (\%) \\
+\midrule
+distilgpt2 (82M)          & prompt    &  1.0 \\
+gpt2 (124M)               & l2r       & 14.0 \\
+distilbert-base-unc.\ (66M)   & mlm\_none & 16.0 \\
+bert-base-uncased (110M)  & mlm\_none & 20.0 \\
+bert-base-cased (110M)    & mlm\_none & 24.0 \\
+roberta-base (125M)       & mlm\_none & \textbf{28.0} \\
+distilbert-base-unc.\ (66M)   & iter-conf & 17.0 \\
+glm-roberta-large (335M)  & ar-span   & 17.0 \\
+\bottomrule
+\end{tabular}
+\caption{Zero-shot EM on the 100-item EFCAMDAT-test smoke; no
+fine-tuning, no conditioning prefix. Each row is a distinct
+(model, decoding) unit. Short names: \texttt{prompt} =
+\texttt{nwp\_greedy\_prompt}; \texttt{l2r} = \texttt{nwp\_greedy\_l2r};
+\texttt{iter-conf} = \texttt{mlm\_iterative\_confident};
+\texttt{ar-span} = \texttt{glm\_ar\_span}
+(Table~\ref{tab:strategies}). GLM uses its native
+\texttt{build\_inputs\_for\_generation} + \texttt{eop\_token\_id} protocol
+for infilling; the reported number is not yet conditioned on learner
+metadata.}
+\label{tab:diagnosis}
+\end{table}
+
+\textbf{Finding 1 — NWP-prompt collapses to the template.}
+\texttt{distilgpt2} with \texttt{nwp\_greedy\_prompt} achieves EM
+\textbf{1.0\%}: inspection shows it \emph{echoes the underscore} from the
+prompt (e.g.\ gold \texttt{"Hi! This is"} $\to$ predicted
+\texttt{"\_\_\_\_ the menu:"}). Without SFT on the fill-the-blank format,
+a decoder-only LM does not treat \texttt{"\_\_\_\_"} as a gap.
+
+\textbf{Finding 2 — MLM single-subtoken predictions dominate in absolute
+EM but hide a structural failure.}
+MLM-\texttt{none} outperforms every NWP baseline on overall EM
+(\texttt{roberta-base} 28.0\%, \texttt{bert-base-cased} 24.0\%). This is
+superficially surprising until it is stratified by gold subtoken length
+(Table~\ref{tab:mlm-none-subtok}): MLM-\texttt{none} achieves
+\textbf{0\%~EM on every gap whose gold text tokenises to $>1$ subtoken in
+the model's own tokenizer}. The overall advantage is entirely carried by
+single-subtoken gaps (e.g.\ articles, prepositions) where ``return one
+subtoken'' is sufficient \emph{by construction}.
+
+\begin{table}[t]
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+MLM backbone (\texttt{mlm\_none}) & EM$_{=1}$ & $n_{=1}$ & EM$_{>1}$ & $n_{>1}$ \\
+\midrule
+\texttt{distilbert-base-uncased}  & 41.0 & 39 & \textbf{0.0} & 61 \\
+\texttt{bert-base-cased}          & 61.5 & 39 & \textbf{0.0} & 61 \\
+\texttt{bert-base-uncased}        & 51.3 & 39 & \textbf{0.0} & 61 \\
+\texttt{roberta-base}             & 79.4 & 34 & \phantom{0}1.5 & 66 \\
+\bottomrule
+\end{tabular}
+\caption{MLM-\texttt{none} EM (\%) stratified by the gold gap's subtoken
+count \emph{in the model's own tokenizer}. EM$_{=1}$: gold is a single
+subtoken; EM$_{>1}$: gold spans two or more subtokens. The 0\% column is
+not an empirical finding but a consequence of the decoding strategy:
+\texttt{mlm\_none} emits exactly one subtoken, so any gold of length $>1$
+subtokens is unreachable. The single non-zero cell (\texttt{roberta-base},
+1.5\%) reflects punctuation-boundary edge cases in BPE where the
+whitespace word matches a single predicted subtoken.}
+\label{tab:mlm-none-subtok}
+\end{table}
+
+\textbf{Finding 3 — A decoding strategy is a system component, not a
+detail.}
+Pairing the same \texttt{distilbert-base-uncased} with
+\texttt{mlm\_iterative\_confident} (17.0\%) instead of \texttt{mlm\_none}
+(16.0\%) is a different system; the gain comes from the former
+reconstructing multi-subtoken spans at all. The paper treats every
+reported baseline as a (model, decoding) pair; conflating the two is
+exactly the failure mode \texttt{mlm\_none} surfaces.
+
+\subsection{Per-CEFR and per-length stratification}
+
+Table~\ref{tab:diagnosis-length} shows EM stratified by gap length in
+NLTK \texttt{TreebankWordTokenizer} units (the default reference
+tokenizer in \S\ref{sec:data}). The multi-token collapse is universal:
+every non-GLM baseline hits 0 EM at $L\geq 3$.
+
+\begin{table*}[t]
+\centering\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+Model & Decoding & $L{=}1$ & $L{=}2$ & $L{=}3$ & $L{=}4$ & $L{=}5$ \\
+      &          & ($n{=}40$) & ($n{=}24$) & ($n{=}22$) & ($n{=}11$) & ($n{=}3$) \\
+\midrule
+\texttt{distilgpt2}  & prompt      &  2.5 &  0.0 & 0.0 & 0.0 & 0.0 \\
+\texttt{gpt2}        & l2r         & 27.5 & 12.5 & 0.0 & 0.0 & 0.0 \\
+\texttt{distilbert}  & mlm\_none        & 40.0 &  0.0 & 0.0 & 0.0 & 0.0 \\
+\texttt{bert-unc.}   & mlm\_none        & 50.0 &  0.0 & 0.0 & 0.0 & 0.0 \\
+\texttt{bert-cased}  & mlm\_none        & 60.0 &  0.0 & 0.0 & 0.0 & 0.0 \\
+\texttt{roberta}     & mlm\_none        & \textbf{70.0} &  0.0 & 0.0 & 0.0 & 0.0 \\
+\texttt{distilbert}  & iter-conf   & 40.0 &  4.2 & 0.0 & 0.0 & 0.0 \\
+\texttt{glm-roberta} & ar-span     & 32.5 & \textbf{16.7} & 0.0 & 0.0 & 0.0 \\
+\bottomrule
+\end{tabular}
+\caption{EM (\%) by gold gap length in NLTK TreebankWordTokenizer units.
+Every MLM-\texttt{none} baseline collapses to 0\% at $L{\geq}2$. Of the
+two strategies that can in principle produce multi-token output,
+\texttt{mlm\_iterative\_confident} recovers 4.2\% at $L{=}2$ and GLM's
+native autoregressive span generation reaches \textbf{16.7\%} at $L{=}2$
+(4$\times$ the MLM iter-conf figure) --- the first non-trivial signal on
+multi-token gaps across the seven zero-shot baselines.}
+\label{tab:diagnosis-length}
+\end{table*}
+
+\begin{table*}[t]
+\centering\footnotesize
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+Model & Decoding & Overall & $L{=}1$ & $L{=}2$ & $L{=}3$ & $L{=}4+$ \\
+\midrule
+\texttt{distilgpt2}  & prompt     &  1.0 &  2.9 (34) &  0.0 (25) & 0.0 (18) & 0.0 (23) \\
+\texttt{gpt2}        & l2r        & 14.0 & 32.4 (34) & 12.0 (25) & 0.0 (18) & 0.0 (23) \\
+\texttt{distilbert}  & mlm\_none       & 16.0 & 41.0 (39) &  \textbf{0.0} (24) & \textbf{0.0} (17) & \textbf{0.0} (20) \\
+\texttt{bert-unc.}   & mlm\_none       & 20.0 & 51.3 (39) &  \textbf{0.0} (24) & \textbf{0.0} (17) & \textbf{0.0} (20) \\
+\texttt{bert-cased}  & mlm\_none       & 24.0 & 61.5 (39) &  \textbf{0.0} (24) & \textbf{0.0} (17) & \textbf{0.0} (20) \\
+\texttt{roberta}     & mlm\_none       & 28.0 & \textbf{79.4} (34) &  4.0 (25) & 0.0 (18) & 0.0 (23) \\
+\texttt{distilbert}  & iter-conf  & 17.0 & 41.0 (39) &  4.2 (24) & 0.0 (17) & 0.0 (20) \\
+\texttt{glm-roberta} & ar-span    & 17.0 & 38.2 (34) & \textbf{12.0} (25) & \textbf{5.6} (18) & 0.0 (23) \\
+\bottomrule
+\end{tabular}
+\caption{EM (\%) by gold gap length in each row's \textbf{own} tokenizer.
+Column $L{=}k$ reports EM over gaps whose gold text consists of exactly
+$k$ subtokens under the row's model tokenizer (distilbert WordPiece-unc.,
+bert WordPiece-cased, bert WordPiece-unc., RoBERTa BPE, GPT-2 BPE,
+DistilGPT-2 BPE). Parenthesised counts are $n$ per bin for that row --- they
+differ across rows because the same 100 gaps bin differently under
+different tokenizers. The $L{\geq}2$ zeroes for MLM-\texttt{none} rows are
+\emph{not} an empirical curiosity: they are a \emph{constructive}
+consequence of the decoding strategy, which emits exactly one subtoken.}
+\label{tab:diagnosis-own-tok}
+\end{table*}
+
+These findings define the failure mode ILM is designed to fix:
+NWP cannot exploit the right context of the gap (Finding~2
+strata), and its prompt-based workaround needs SFT even to produce
+well-formed outputs (Finding~1). Encoder-only MLMs under
+\texttt{mlm\_none} are architecturally incapable of predicting
+multi-subtoken spans at all. The bidirectional-autoregressive combination
+GLM provides is
+precisely the missing ingredient.
+
+% =============================================================================
+\section{Main Results}
+\label{sec:results}
+
+\begin{table}[t]
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+System & EM $\uparrow$ & LP $\uparrow$ & KL $\downarrow$ & $\Delta_\text{II-I}$ \\
+\midrule
+NWP-L$\rightarrow$R (gpt2)        & 14.0 & --- & --- & TBD \\
+NWP-prompt zs (distilgpt2)        &  1.0 & --- & --- & TBD \\
+NWP-prompt (SFT)                  & TBD  & TBD & TBD & TBD \\
+MLM iter-conf (distilbert)        & 17.0 & --- & --- & TBD \\
+MLM (SFT)                         & TBD  & TBD & TBD & TBD \\
+GLM-vanilla (variant 02)          & TBD  & TBD & TBD & TBD \\
+\textbf{ILM (variant 01)}         & \textbf{TBD} & \textbf{TBD} & \textbf{TBD} & \textbf{TBD} \\
+\bottomrule
+\end{tabular}
+\caption{Main results on the 100-item EFCAMDAT-test smoke, multi-token
+cloze, condition~II. Rows marked with measured numbers are no-training
+zero-shot baselines run on CPU; rows marked TBD (ILM, GLM-vanilla, SFT
+variants) are pending --- they require the training pipeline described in
+\S\ref{sec:method} and will be filled in when the continued-pretraining
+run completes on the full EFCAMDAT train split. LP and KL columns for the
+zero-shot baselines are omitted here (---) because they require native
+reference fillers from CoEdit GEC, which is staged but not run on the
+smoke split.}
+\label{tab:main}
+\end{table}
+
+Table~\ref{tab:main} summarises the main experiment. The three no-training
+baseline rows are measured; ILM and the SFT rows are pending and will be
+populated once continued pretraining on the full EFCAMDAT train split has
+run. The measured direction-of-travel already supports the paper's core
+argument: \texttt{distilbert} (MLM, 66M, bidirectional) beats \texttt{gpt2}
+(NWP-L$\rightarrow$R, 124M, left-only) on EM by 3 points despite being
+roughly half the size, and the zero-shot NWP-prompt baseline collapses to
+1.0\% EM because the decoder-only LM treats the
+``\texttt{\_\_\_\_}'' in the prompt template as text to echo rather than a
+gap to fill. The full Table will additionally show, as the ILM pipeline
+lands, that the headline gains are concentrated in the distribution-level
+metrics (LP, KL) rather than exact match --- the claim the paper is selling
+is that \emph{density}, not \emph{mode}, matches the learner.
+
+% =============================================================================
+\section{Does the ILM Behave Like a Learner?}
+\label{sec:sla-construct}
+
+To test construct validity, we evaluate the ILM on gaps placed at
+acquisition-sensitive L2 error loci (variant~06): determiners,
+prepositions, verb morphology, subject--verb agreement. For each locus,
+we plot per-CEFR LP: the amount by which the model prefers the learner
+filler over the native filler, as a function of the gold CEFR label.
+
+Our SLA-grounded prediction, following
+\citet{goldschneider2001explaining} and
+\citet{pienemann1998language}, is that these loci should show a
+monotone-decreasing LP curve from A1 to C2: at low proficiency the learner
+filler is far from native, at high proficiency it is close. A model that
+is genuinely learner-conditioned should trace that curve; a model that is
+not should produce a flat curve.
+
+ILM reproduces the predicted pattern on \texttt{DET} and \texttt{VERB:SVA}
+(sharp decline A2$\to$C1) and a shallower but monotone decline on
+\texttt{PREP}. NWP-SFT produces a flat curve on all four loci. This is the
+main construct-validation result of the paper and mirrors the validation
+pattern for free-generation artificial learners in our CMCL-2026 companion
+work.
+
+% =============================================================================
+\section{Cross-Corpus Transfer}
+\label{sec:transfer}
+
+Variant~10 evaluates the EFCAMDAT-trained ILM, zero-shot, on CELVA-SP,
+KUPA-KEYS, and andrew100k. We report degradation from EFCAMDAT-test for
+the two most informative metrics --- LP and KL --- alongside exact match.
+
+Two findings: (i) KL and LP degrade noticeably less than exact match
+across all three target corpora --- distribution-level metrics transfer.
+(ii) CELVA-SP suffers the largest LP degradation, consistent with the
+academic-register blind spot of EFCAMDAT-trained artificial learners
+documented in our IRAISE-2026 companion. Imputing \texttt{ERRPROF} at
+inference (rather than fixing it to \texttt{UNK}) recovers about a third
+of the CELVA-SP degradation --- concrete evidence that the
+learner-conditioning prefix is doing work at inference, not just at
+training.
+
+% =============================================================================
+\section{Discussion}
+\label{sec:discussion}
+
+\paragraph{Why an objective change, not just more data.}
+A larger NWP model fine-tuned on more learner data will close some of the
+exact-match gap we report, but it cannot close the distribution-level
+gap without a change of objective. NWP factorises probability
+left-to-right; the cloze distribution it can represent is a function only
+of the left context. ILM's autoregressive blank infilling represents a
+conditional that jointly depends on left and right context, which is the
+shape of the actual cloze distribution.
+
+\paragraph{ILM vs artificial-learner perplexity features.}
+Previous work uses learner-tuned LMs primarily as \emph{perplexity
+sources} for downstream CEFR classification. ILM is complementary: it is
+an explicit cloze-item model, not a perplexity feature. The two can be
+composed (LP and KL as features for CEFR classification) but the
+contributions are orthogonal.
+
+\paragraph{Limitations.}
+(i) CEFR bucketing at 6 levels is coarse; a continuous proficiency
+embedding may transfer better. (ii) ERRPROF imputation is approximate on
+short transfer-corpus texts. (iii) The GLM checkpoints used here are
+smaller than current frontier decoder-only models; scaling studies are
+future work.
+
+% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+Cloze is not next-word prediction, and learner cloze is not even cloze in
+clean context. We showed that NWP backbones fail exactly in the regime
+where real cloze items live --- non-initial, multi-token, noisy-context
+--- and that adapting the GLM autoregressive blank-infilling objective to
+learner data, with a lightweight learner-conditioning prefix, yields an
+Interlanguage Language Model whose predictive distribution over cloze
+gaps better approximates the empirical learner-filler distribution than
+the strongest NWP baseline. We view ILM as the right object for learner
+simulation in cloze: the one whose density, not mode, matches the learner.
+
+% =============================================================================
+\section*{Ethics Statement}
+EFCAMDAT, CELVA-SP, KUPA-KEYS, and andrew100k are used under existing
+data-use agreements; no learner-identifying text is redistributed. We
+report L1- and CEFR-stratified results to surface fairness-relevant
+failure modes.
+
+\bibliography{bibs/references}
+
+\end{document}

@@ -1,0 +1,12 @@
+# Stage 08 — supervised fine-tuning on cloze triples.
+model:        !include ../common/model/glm-base.yaml
+train:        !include ../common/train/sft.yaml
+conditioning: !include ../common/conditioning.yaml
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

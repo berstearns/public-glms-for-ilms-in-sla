@@ -1,0 +1,52 @@
+# LaTeX build artifacts
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.python-version
+
+# Caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Run / cache outputs
+runs/
+data-cache/
+data/
+codebase/artifacts/
+codebase/runs/
+codebase/data-cache/
+*.ckpt
+*.pt
+*.bin
+wandb/
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+.claude/
+
+# Environment
+.env
+.env.*

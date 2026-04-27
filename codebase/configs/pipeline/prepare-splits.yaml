@@ -1,0 +1,14 @@
+# Stage 01 — CEFR-stratified sampling of EFCAMDAT train/test.
+data: !include ../common/data.yaml
+
+stage:
+  train_sample: 0      # 0 = keep the full split; otherwise N per CEFR level
+  test_sample: 0
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

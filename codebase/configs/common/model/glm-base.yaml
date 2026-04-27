@@ -1,0 +1,7 @@
+# Model: GLM base (THUDM/glm-335M).
+name: glm-base
+kind: glm
+hf_repo: THUDM/glm-335M
+hf_revision: main
+max_seq_length: 512
+torch_dtype: float32

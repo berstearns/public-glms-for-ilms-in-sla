@@ -1,0 +1,43 @@
+# Variant 05 — encoder-only MLM baseline (BERT/DeBERTa).
+# Single- and iterative multi-token gaps. Zero-shot + SFT.
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - build-cloze
+    - train-sft
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+download-data:  !include ../pipeline/download-data.yaml
+prepare-splits: !include ../pipeline/prepare-splits.yaml
+gec-clean:      !include ../pipeline/gec-clean.yaml
+build-cloze:    !include ../pipeline/build-cloze.yaml
+evaluate:       !include ../pipeline/evaluate.yaml
+plot-results:   !include ../pipeline/plot-results.yaml
+
+train-sft:
+  model:        !include ../common/model/bert-large-cased.yaml
+  train:        !include ../common/train/sft.yaml
+  conditioning: !include ../common/conditioning.yaml
+
+infer:
+  model:        !include ../common/model/bert-large-cased.yaml
+  conditioning: !include ../common/conditioning.yaml
+  infer:        !include ../common/infer.yaml
+  stage:
+    items_jsonl: ""
+    nwp_l2r: false
+    mlm_length_unknown: true     # enumerate span lengths at inference
+
+experiment:
+  name: "05-mlm"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

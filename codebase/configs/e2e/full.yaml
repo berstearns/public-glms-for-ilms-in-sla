@@ -1,0 +1,53 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# e2e.full — the whole pipeline in one composite YAML.
+# ═══════════════════════════════════════════════════════════════════════════
+# Each stage section embeds its per-stage config via `!include`, so the
+# per-stage files remain the source of truth and this file never drifts.
+#
+# `pipeline.order` determines which stages run and in what order. A stage is
+# skipped if its key is absent from the list. Variant composites can change
+# the order (e.g. drop `train-sft`, add `corrupt-context`) without touching
+# the per-stage YAMLs.
+#
+# Usage:
+#   just e2e                                    # runs the whole list
+#   just e2e --pipeline.only prepare-splits,gec-clean
+#   just e2e -c configs/e2e/01-ilm-main.yaml    # a variant composite
+# ═══════════════════════════════════════════════════════════════════════════
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - errant-profile
+    - cluster-errprof
+    - build-cloze
+    - train-ilm
+    - infer
+    - evaluate
+    - transfer-eval
+    - plot-results
+  stop_on_error: true
+
+download-data:   !include ../pipeline/download-data.yaml
+prepare-splits:  !include ../pipeline/prepare-splits.yaml
+gec-clean:       !include ../pipeline/gec-clean.yaml
+errant-profile:  !include ../pipeline/errant-profile.yaml
+cluster-errprof: !include ../pipeline/cluster-errprof.yaml
+build-cloze:     !include ../pipeline/build-cloze.yaml
+corrupt-context: !include ../pipeline/corrupt-context.yaml
+train-ilm:       !include ../pipeline/train-ilm.yaml
+train-sft:       !include ../pipeline/train-sft.yaml
+infer:           !include ../pipeline/infer.yaml
+evaluate:        !include ../pipeline/evaluate.yaml
+transfer-eval:   !include ../pipeline/transfer-eval.yaml
+plot-results:    !include ../pipeline/plot-results.yaml
+
+experiment:
+  name: e2e_full
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

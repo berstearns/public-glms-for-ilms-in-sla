@@ -1,0 +1,7 @@
+# Model: GLM-RoBERTa-large.
+name: glm-roberta-large
+kind: glm
+hf_repo: THUDM/glm-roberta-large
+hf_revision: main
+max_seq_length: 512
+torch_dtype: float32

@@ -1,0 +1,43 @@
+# Variant 03 — NWP prompt fill-blank baseline (GPT-2 class decoder with
+# prompt-style cloze framing). Zero-shot + SFT.
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - build-cloze
+    - train-sft
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+download-data:  !include ../pipeline/download-data.yaml
+prepare-splits: !include ../pipeline/prepare-splits.yaml
+gec-clean:      !include ../pipeline/gec-clean.yaml
+build-cloze:    !include ../pipeline/build-cloze.yaml
+evaluate:       !include ../pipeline/evaluate.yaml
+plot-results:   !include ../pipeline/plot-results.yaml
+
+train-sft:
+  model:        !include ../common/model/gpt2.yaml
+  train:        !include ../common/train/sft.yaml
+  conditioning: !include ../common/conditioning.yaml
+
+infer:
+  model:        !include ../common/model/gpt2.yaml
+  conditioning: !include ../common/conditioning.yaml
+  infer:        !include ../common/infer.yaml
+  stage:
+    items_jsonl: ""
+    nwp_l2r: false
+    mlm_length_unknown: false
+
+experiment:
+  name: "03-nwp-prompt"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

@@ -1,0 +1,11 @@
+# Stage 03 — ERRANT-tag (learner, clean) pairs into a profile matrix.
+stage:
+  pairs_dir: ""             # "" = use {output_dir}/{name}/gec_clean/
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

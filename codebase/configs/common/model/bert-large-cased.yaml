@@ -1,0 +1,7 @@
+# Model: BERT-large-cased (masked-LM baseline).
+name: bert-large-cased
+kind: mlm
+hf_repo: bert-large-cased
+hf_revision: main
+max_seq_length: 512
+torch_dtype: float32

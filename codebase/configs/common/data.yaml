@@ -1,0 +1,12 @@
+# Shared "data" section. !include this under the `data:` key of a stage config.
+splits_dir: ./data/splits
+efcamdat_train: norm-EFCAMDAT-train.csv
+efcamdat_test: norm-EFCAMDAT-test.csv
+efcamdat_remainder: norm-EFCAMDAT-remainder.csv
+celva_sp: norm-CELVA-SP.csv
+celva_sp_label: norm-CELVA-SP-label.csv
+kupa_keys: norm-KUPA-KEYS.csv
+kupa_keys_label: norm-KUPA-KEYS-label.csv
+andrew_test: norm-andrew100k-test-label.csv
+andrew_train: norm-andrew100k-train-label.csv
+universal_label: norm-universal-cefr-label.csv

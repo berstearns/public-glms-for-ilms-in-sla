@@ -1,0 +1,41 @@
+# Variant 08 — context-condition ablation (I vs II vs III).
+# Runs both build-cloze (cond II) and corrupt-context (emits cond III) and
+# infers/evaluates on each. To sweep the knob, either edit the cloze
+# context_condition in build-cloze below or run the variant three times
+# with CLI overrides:
+#   just variant 08-context-condition --build-cloze.cloze.context_condition I
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - errant-profile
+    - cluster-errprof
+    - build-cloze
+    - corrupt-context
+    - train-ilm
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+download-data:   !include ../pipeline/download-data.yaml
+prepare-splits:  !include ../pipeline/prepare-splits.yaml
+gec-clean:       !include ../pipeline/gec-clean.yaml
+errant-profile:  !include ../pipeline/errant-profile.yaml
+cluster-errprof: !include ../pipeline/cluster-errprof.yaml
+build-cloze:     !include ../pipeline/build-cloze.yaml
+corrupt-context: !include ../pipeline/corrupt-context.yaml
+train-ilm:       !include ../pipeline/train-ilm.yaml
+infer:           !include ../pipeline/infer.yaml
+evaluate:        !include ../pipeline/evaluate.yaml
+plot-results:    !include ../pipeline/plot-results.yaml
+
+experiment:
+  name: "08-context-condition"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

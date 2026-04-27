@@ -1,0 +1,13 @@
+# Stage 06 — materialise condition III by corrupting condition I.
+cloze: !include ../common/cloze.yaml
+
+stage:
+  source_jsonl: ""         # "" = use {output_dir}/{name}/build_cloze/cloze.jsonl
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

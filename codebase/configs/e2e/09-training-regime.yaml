@@ -1,0 +1,41 @@
+# Variant 09 — training-regime ablation (zero-shot vs continued-PT vs SFT).
+# Isolates the contribution of each adaptation stage. Select the regime by
+# toggling `pipeline.order` inline or via CLI:
+#   just variant 09-training-regime --pipeline.only build-cloze,infer,evaluate     # zero-shot
+#   just variant 09-training-regime --pipeline.only …,train-ilm,infer,evaluate     # cont-PT
+#   just variant 09-training-regime --pipeline.only …,train-sft,infer,evaluate     # SFT
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - errant-profile
+    - cluster-errprof
+    - build-cloze
+    - train-ilm
+    - train-sft
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+download-data:   !include ../pipeline/download-data.yaml
+prepare-splits:  !include ../pipeline/prepare-splits.yaml
+gec-clean:       !include ../pipeline/gec-clean.yaml
+errant-profile:  !include ../pipeline/errant-profile.yaml
+cluster-errprof: !include ../pipeline/cluster-errprof.yaml
+build-cloze:     !include ../pipeline/build-cloze.yaml
+train-ilm:       !include ../pipeline/train-ilm.yaml
+train-sft:       !include ../pipeline/train-sft.yaml
+infer:           !include ../pipeline/infer.yaml
+evaluate:        !include ../pipeline/evaluate.yaml
+plot-results:    !include ../pipeline/plot-results.yaml
+
+experiment:
+  name: "09-training-regime"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

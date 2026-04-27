@@ -1,0 +1,11 @@
+# Stage 10 — score predictions; emit summary + stratified reports.
+eval:  !include ../common/eval.yaml
+infer: !include ../common/infer.yaml
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

@@ -1,0 +1,51 @@
+# Variant 01 — ILM main.
+# GLM + learner-conditioning, multi-token span, authentic learner context
+# (cond II), continued-pretrain on EFCAMDAT, cross-corpus transfer to
+# CELVA-SP / KUPA-KEYS / andrew100k.
+#
+# Stage experiment.{name,output_dir,seed,device,…} are overridden by the
+# top-level `experiment:` here — see pipeline/e2e/runner.py:_inherit_experiment.
+
+pipeline:
+  order:
+    - download-data
+    - prepare-splits
+    - gec-clean
+    - errant-profile
+    - cluster-errprof
+    - build-cloze
+    - train-ilm
+    - infer
+    - evaluate
+    - transfer-eval
+    - plot-results
+  stop_on_error: true
+
+download-data:   !include ../pipeline/download-data.yaml
+prepare-splits:  !include ../pipeline/prepare-splits.yaml
+gec-clean:       !include ../pipeline/gec-clean.yaml
+errant-profile:  !include ../pipeline/errant-profile.yaml
+cluster-errprof: !include ../pipeline/cluster-errprof.yaml
+build-cloze:     !include ../pipeline/build-cloze.yaml
+train-ilm:       !include ../pipeline/train-ilm.yaml
+infer:           !include ../pipeline/infer.yaml
+evaluate:        !include ../pipeline/evaluate.yaml
+plot-results:    !include ../pipeline/plot-results.yaml
+
+# transfer-eval is inlined so we can set transfer.corpora for this variant.
+transfer-eval:
+  data:         !include ../common/data.yaml
+  cloze:        !include ../common/cloze.yaml
+  model:        !include ../common/model/glm-base.yaml
+  conditioning: !include ../common/conditioning.yaml
+  infer:        !include ../common/infer.yaml
+  transfer:
+    corpora: [celva-sp, kupa-keys, andrew-test]
+
+experiment:
+  name: "01-ilm-main"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

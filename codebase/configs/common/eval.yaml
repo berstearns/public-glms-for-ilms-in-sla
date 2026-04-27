@@ -1,0 +1,4 @@
+# Shared "eval" section. !include under the `eval:` key.
+metrics: [em, top_k, learner_plausibility, kl, js]
+stratify_by: [cefr, l1, gap_length, gap_position]
+emit_per_item_scores: true

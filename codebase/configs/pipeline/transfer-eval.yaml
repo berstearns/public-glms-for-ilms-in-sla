@@ -1,0 +1,17 @@
+# Stage 11 — apply the trained checkpoint to transfer corpora.
+data:         !include ../common/data.yaml
+cloze:        !include ../common/cloze.yaml
+model:        !include ../common/model/glm-base.yaml
+conditioning: !include ../common/conditioning.yaml
+infer:        !include ../common/infer.yaml
+
+transfer:
+  corpora: []    # e.g. [celva-sp, kupa-keys, andrew-test]
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

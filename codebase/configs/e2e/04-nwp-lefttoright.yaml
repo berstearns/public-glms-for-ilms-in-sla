@@ -1,0 +1,48 @@
+# Variant 04 — NWP left-to-right baseline. Zero-shot; weakest baseline —
+# isolates the bidirectional-context gain vs 03.
+
+pipeline:
+  order:
+    # download-data / prepare-splits are skipped: build-cloze reads
+    # directly from samples/efcamdat-smoke-100-canonical.csv (see
+    # configs/pipeline/build-cloze.yaml::stage.source_csv).
+    - build-cloze
+    - infer
+    - evaluate
+    - plot-results
+  stop_on_error: true
+
+evaluate:     !include ../pipeline/evaluate.yaml
+plot-results: !include ../pipeline/plot-results.yaml
+
+build-cloze:
+  data: !include ../common/data.yaml
+  stage:
+    source_csv: samples/efcamdat-smoke-100-canonical.csv
+  cloze:
+    gap_type: single_token
+    span_length_lambda: 1.0
+    span_max_length: 1
+    mask_budget: 0.15
+    num_gaps_per_text: 1
+    context_condition: I
+    synth_corruption_rate: 0.05
+    l2_loci: [DET, PREP, VERB:FORM, VERB:SVA]
+    exclude_sentence_initial: false
+
+infer:
+  model:        !include ../common/model/gpt2.yaml
+  conditioning: !include ../common/conditioning.yaml
+  infer:        !include ../common/infer.yaml
+  stage:
+    items_jsonl: ""
+    nwp_l2r: true        # ← left-to-right continuation mode
+    mlm_length_unknown: false
+
+experiment:
+  name: "04-nwp-lefttoright"
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

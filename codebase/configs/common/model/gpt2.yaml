@@ -1,0 +1,7 @@
+# Model: GPT-2 (next-word-prediction baseline).
+name: gpt2
+kind: nwp
+hf_repo: gpt2
+hf_revision: main
+max_seq_length: 1024
+torch_dtype: float32

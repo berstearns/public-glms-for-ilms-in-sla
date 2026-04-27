@@ -1,0 +1,7 @@
+# Shared "conditioning" section. !include under the `conditioning:` key.
+enabled: true
+include_l1: true
+include_cefr: true
+include_errprof: true
+errprof_num_clusters: 16
+unknown_token: UNK

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the EMNLP 2026 paper."
+title: "ilmcloze — Interlanguage Language Models for Learner Cloze Simulation"
+version: "0.1.0"
+date-released: "2026-04-21"
+authors:
+  - family-names: "Anonymous"
+    given-names: "Anonymous"
+license: MIT
+repository-code: "https://example.com/anon/ilmcloze"
+preferred-citation:
+  type: conference-paper
+  title: "From Next-Word Prediction to Interlanguage Infilling: Adapting GLMs for Learner Cloze Simulation"
+  authors:
+    - family-names: "Anonymous"
+      given-names: "Anonymous"
+  year: 2026
+  collection-title: "Proceedings of EMNLP 2026"

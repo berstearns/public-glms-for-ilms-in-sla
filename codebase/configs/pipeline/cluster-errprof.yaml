@@ -1,0 +1,14 @@
+# Stage 04 — k-means over ERRANT profile vectors (ERRPROF).
+conditioning: !include ../common/conditioning.yaml
+
+stage:
+  profiles_path: ""       # "" = use {output_dir}/{name}/errant_profile/errant_profiles.parquet
+  k_override: 0           # 0 = use conditioning.errprof_num_clusters
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

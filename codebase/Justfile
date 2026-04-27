@@ -1,0 +1,231 @@
+# ilmcloze — config-driven research pipeline.
+#
+# Every stage is `uv run python -m pipeline.{stage} --config configs/pipeline/{stage}.yaml`.
+# Override any config field at the call site via `--section.field value`, e.g.
+#     just train-ilm --train.learning_rate 5e-6
+#     just build-cloze --cloze.context_condition I
+#
+# End-to-end runs are driven by composite YAMLs under configs/e2e/:
+#     just e2e                         # configs/e2e/full.yaml (all 13 stages)
+#     just variant 01-ilm-main         # configs/e2e/01-ilm-main.yaml
+#     just e2e --pipeline.only prepare-splits,gec-clean
+#
+# `just --list` to browse every recipe.
+#
+# ─────────────────────────────────────────────────────────────────────────
+# PIPELINE DAG (canonical source: experiments-ideas/README.md)
+# ─────────────────────────────────────────────────────────────────────────
+#  raw splits ──► [00] download-data ─► [01] prepare-splits ──┐
+#                                                             │
+#                                             ┌───────────────┤
+#                                             ▼               ▼
+#                                      [02] gec-clean    [05] build-cloze
+#                                             │               │
+#                                             ▼               │
+#                                   [03] errant-profile       │
+#                                             │               │
+#                                             ▼               ▼
+#                                   [04] cluster-errprof   [06] corrupt-context (optional, cond III)
+#                                             │               │
+#                                             └──────┬────────┘
+#                                                    ▼
+#                                          [07] train-ilm    OR  [08] train-sft
+#                                                    │               │
+#                                                    └──────┬────────┘
+#                                                           ▼
+#                                                      [09] infer
+#                                                           │
+#                                                           ▼
+#                                                     [10] evaluate ──► [12] plot-results
+#                                                           │
+#                                                           └─► [11] transfer-eval
+# ─────────────────────────────────────────────────────────────────────────
+
+set shell := ["bash", "-cu"]
+set dotenv-load := true
+
+PY := `command -v uv >/dev/null && echo "uv run python" || echo "python"`
+
+# ── config file locations (override via env) ────────────────────────
+CFG_DOWNLOAD        := env_var_or_default("ILM_CFG_DOWNLOAD",        "configs/pipeline/download-data.yaml")
+CFG_PREPARE         := env_var_or_default("ILM_CFG_PREPARE",         "configs/pipeline/prepare-splits.yaml")
+CFG_GEC             := env_var_or_default("ILM_CFG_GEC",             "configs/pipeline/gec-clean.yaml")
+CFG_ERRANT          := env_var_or_default("ILM_CFG_ERRANT",          "configs/pipeline/errant-profile.yaml")
+CFG_CLUSTER         := env_var_or_default("ILM_CFG_CLUSTER",         "configs/pipeline/cluster-errprof.yaml")
+CFG_BUILD_CLOZE     := env_var_or_default("ILM_CFG_BUILD_CLOZE",     "configs/pipeline/build-cloze.yaml")
+CFG_CORRUPT         := env_var_or_default("ILM_CFG_CORRUPT",         "configs/pipeline/corrupt-context.yaml")
+CFG_TRAIN_ILM       := env_var_or_default("ILM_CFG_TRAIN_ILM",       "configs/pipeline/train-ilm.yaml")
+CFG_TRAIN_SFT       := env_var_or_default("ILM_CFG_TRAIN_SFT",       "configs/pipeline/train-sft.yaml")
+CFG_INFER           := env_var_or_default("ILM_CFG_INFER",           "configs/pipeline/infer.yaml")
+CFG_EVAL            := env_var_or_default("ILM_CFG_EVAL",            "configs/pipeline/evaluate.yaml")
+CFG_TRANSFER        := env_var_or_default("ILM_CFG_TRANSFER",        "configs/pipeline/transfer-eval.yaml")
+CFG_PLOT            := env_var_or_default("ILM_CFG_PLOT",            "configs/pipeline/plot-results.yaml")
+CFG_E2E             := env_var_or_default("ILM_CFG_E2E",             "configs/e2e/full.yaml")
+
+ARTIFACTS           := env_var_or_default("ILM_ARTIFACTS",           "./artifacts")
+
+default:
+    @just --list
+
+# ══════════════════════════════════════════════════════════════════════
+# SETUP
+# ══════════════════════════════════════════════════════════════════════
+
+setup:
+    @if command -v uv >/dev/null; then \
+        echo "→ using uv"; uv sync; \
+    else \
+        echo "→ uv not found, falling back to pip"; \
+        python -m venv .venv; \
+        . .venv/bin/activate && pip install --upgrade pip && pip install -e ".[dev]" || pip install -e .; \
+    fi
+    @echo "✓ env ready"
+
+# ══════════════════════════════════════════════════════════════════════
+# PER-STAGE RECIPES
+# ══════════════════════════════════════════════════════════════════════
+# Every recipe forwards variadic *ARGS → dotted CLI overrides, e.g.
+#     just prepare-splits --stage.train_sample 2000 --experiment.name smoke
+
+download-data *ARGS:
+    @echo "→ pipeline.download_data"
+    {{PY}} -m pipeline.download_data --config {{CFG_DOWNLOAD}} {{ARGS}}
+
+prepare-splits *ARGS:
+    @echo "→ pipeline.prepare_splits"
+    {{PY}} -m pipeline.prepare_splits --config {{CFG_PREPARE}} {{ARGS}}
+
+gec-clean *ARGS:
+    @echo "→ pipeline.gec_clean"
+    {{PY}} -m pipeline.gec_clean --config {{CFG_GEC}} {{ARGS}}
+
+errant-profile *ARGS:
+    @echo "→ pipeline.errant_profile"
+    {{PY}} -m pipeline.errant_profile --config {{CFG_ERRANT}} {{ARGS}}
+
+cluster-errprof *ARGS:
+    @echo "→ pipeline.cluster_errprof"
+    {{PY}} -m pipeline.cluster_errprof --config {{CFG_CLUSTER}} {{ARGS}}
+
+build-cloze *ARGS:
+    @echo "→ pipeline.build_cloze"
+    {{PY}} -m pipeline.build_cloze --config {{CFG_BUILD_CLOZE}} {{ARGS}}
+
+corrupt-context *ARGS:
+    @echo "→ pipeline.corrupt_context"
+    {{PY}} -m pipeline.corrupt_context --config {{CFG_CORRUPT}} {{ARGS}}
+
+train-ilm *ARGS:
+    @echo "→ pipeline.train_ilm"
+    {{PY}} -m pipeline.train_ilm --config {{CFG_TRAIN_ILM}} {{ARGS}}
+
+train-sft *ARGS:
+    @echo "→ pipeline.train_sft"
+    {{PY}} -m pipeline.train_sft --config {{CFG_TRAIN_SFT}} {{ARGS}}
+
+infer *ARGS:
+    @echo "→ pipeline.infer"
+    {{PY}} -m pipeline.infer --config {{CFG_INFER}} {{ARGS}}
+
+evaluate *ARGS:
+    @echo "→ pipeline.evaluate"
+    {{PY}} -m pipeline.evaluate --config {{CFG_EVAL}} {{ARGS}}
+
+transfer-eval *ARGS:
+    @echo "→ pipeline.transfer_eval"
+    {{PY}} -m pipeline.transfer_eval --config {{CFG_TRANSFER}} {{ARGS}}
+
+plot-results *ARGS:
+    @echo "→ pipeline.plot_results"
+    {{PY}} -m pipeline.plot_results --config {{CFG_PLOT}} {{ARGS}}
+
+# ══════════════════════════════════════════════════════════════════════
+# END-TO-END DRIVERS
+# ══════════════════════════════════════════════════════════════════════
+
+# Full pipeline via configs/e2e/full.yaml; override with --pipeline.only or -c.
+e2e *ARGS:
+    @echo "→ pipeline.e2e"
+    {{PY}} -m pipeline.e2e --config {{CFG_E2E}} {{ARGS}}
+
+# Run a specific variant: `just variant 01-ilm-main` → configs/e2e/01-ilm-main.yaml.
+variant NAME *ARGS:
+    @echo "→ pipeline.e2e (variant {{NAME}})"
+    {{PY}} -m pipeline.e2e --config configs/e2e/{{NAME}}.yaml {{ARGS}}
+
+# Happy-path aliases:
+main: (variant "01-ilm-main")
+    @echo "✓ main experiment complete"
+
+# ══════════════════════════════════════════════════════════════════════
+# HELP PER STAGE (inspect the auto-generated flags)
+# ══════════════════════════════════════════════════════════════════════
+
+help-download-data:
+    {{PY}} -m pipeline.download_data --help
+
+help-prepare-splits:
+    {{PY}} -m pipeline.prepare_splits --help
+
+help-gec-clean:
+    {{PY}} -m pipeline.gec_clean --help
+
+help-errant-profile:
+    {{PY}} -m pipeline.errant_profile --help
+
+help-cluster-errprof:
+    {{PY}} -m pipeline.cluster_errprof --help
+
+help-build-cloze:
+    {{PY}} -m pipeline.build_cloze --help
+
+help-corrupt-context:
+    {{PY}} -m pipeline.corrupt_context --help
+
+help-train-ilm:
+    {{PY}} -m pipeline.train_ilm --help
+
+help-train-sft:
+    {{PY}} -m pipeline.train_sft --help
+
+help-infer:
+    {{PY}} -m pipeline.infer --help
+
+help-evaluate:
+    {{PY}} -m pipeline.evaluate --help
+
+help-transfer-eval:
+    {{PY}} -m pipeline.transfer_eval --help
+
+help-plot-results:
+    {{PY}} -m pipeline.plot_results --help
+
+help-e2e:
+    {{PY}} -m pipeline.e2e --help
+
+# ══════════════════════════════════════════════════════════════════════
+# HOUSEKEEPING
+# ══════════════════════════════════════════════════════════════════════
+
+fmt:
+    {{PY}} -m ruff format src/
+    {{PY}} -m ruff check --fix src/
+
+lint:
+    {{PY}} -m ruff check src/
+
+test:
+    {{PY}} -m pytest -v
+
+# Peek at what's been produced under artifacts/.
+peek:
+    @echo "── artifacts root ───────────────────"
+    @ls "{{ARTIFACTS}}" 2>/dev/null || echo "(empty)"
+
+clean-experiment NAME:
+    rm -rf "{{ARTIFACTS}}/{{NAME}}"
+    @echo "✓ cleared {{ARTIFACTS}}/{{NAME}}"
+
+clean-all:
+    rm -rf "{{ARTIFACTS}}"
+    @echo "✓ all artifacts cleared"

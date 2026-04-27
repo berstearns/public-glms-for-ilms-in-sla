@@ -1,0 +1,16 @@
+# Stage 02 — produce GEC-corrected texts via CoEdit.
+stage:
+  coedit_repo: grammarly/coedit-large
+  # Default: the 100-row canonical smoke sample. Override with the empty
+  # string to fall back to {output_dir}/{name}/prepare_splits/efcamdat_train.csv,
+  # or point at any CSV with columns {text, cefr, l1, corpus, item_id}.
+  input_csv: samples/efcamdat-smoke-100-canonical.csv
+  overwrite: false
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu

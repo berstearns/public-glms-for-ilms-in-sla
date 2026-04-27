@@ -1,0 +1,17 @@
+# Stage 05 — sample gaps and materialise ClozeItems.
+data:  !include ../common/data.yaml
+cloze: !include ../common/cloze.yaml
+
+stage:
+  # Default: the 100-row canonical smoke sample. Override with the empty
+  # string to fall back to {output_dir}/{name}/prepare_splits/efcamdat_test.csv,
+  # or point at any CSV with columns {text, cefr, l1, corpus, item_id}.
+  source_csv: samples/efcamdat-smoke-100-canonical.csv
+
+experiment:
+  name: default
+  output_dir: ./artifacts
+  save_config_snapshot: true
+  verbose: false
+  seed: 42
+  device: cpu
